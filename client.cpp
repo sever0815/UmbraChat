@@ -28,15 +28,13 @@ void receive_messages(int sock) {
             break;
         }
 
-        // Очищаем строку ввода в терминале, выводим сообщение выше, возвращаем ввод
-        std::cout << "\33[2K\r"; // Очистить текущую строку ввода
-        std::cout << buffer;     // Вывести входящее сообщение
-        std::cout << "> " << current_input << std::flush; // Вернуть строку ввода и набранный текст
+        std::cout << "\33[2K\r";
+        std::cout << buffer;
+        std::cout << "> " << current_input << std::flush;
     }
 }
 
 void start_chat_session(const std::string& endpoint, const std::string& key, const std::string& username) {
-    // Парсим ip и port (формат ip:port)
     size_t colon = endpoint.find(':');
     if (colon == std::string::npos) {
         std::cout << "[-] Неверный формат адреса. Используйте IP:PORT\n";
@@ -67,6 +65,19 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
         return;
     }
 
+    // Отправляем ключ серверу для авторизации
+    send(sock, key.c_str(), key.size(), 0);
+
+    // Ждем ответ от сервера (успешна ли авторизация)
+    char auth_resp[256];
+    memset(auth_resp, 0, sizeof(auth_resp));
+    int resp_len = recv(sock, auth_resp, sizeof(auth_resp) - 1, 0);
+    if (resp_len <= 0 || std::string(auth_resp).find(" [+]") == std::string::npos) {
+        std::cout << "[-] Ошибка авторизации: неверный ключ или сервер отклонил соединение.\n";
+        close(sock);
+        return;
+    }
+
     clear_screen();
     std::cout << "=== Сеанс связи с " << endpoint << " (Пользователь: " << username << ") ===\n";
     std::cout << "[!] История сообщений не сохраняется. При выходе буфер будет очищен.\n";
@@ -76,10 +87,10 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
     g_running = true;
     std::thread rx_thread(receive_messages, sock);
 
-    // Главный цикл отправки сообщений
     char c;
     current_input.clear();
-    while (g_running && std::read(STDIN_FILENO, &c, 1) > 0) {
+    // ИСПРАВЛЕНО: убрано std::
+    while (g_running && read(STDIN_FILENO, &c, 1) > 0) {
         if (c == '\n') {
             if (current_input == "/exit") {
                 g_running = false;
@@ -89,17 +100,16 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
                 std::string full_msg = "[" + username + "]: " + current_input + "\n";
                 send(sock, full_msg.c_str(), full_msg.size(), 0);
                 
-                // Перемещаем курсор наверх и выводим свое сообщение
                 std::cout << "\33[2K\r[" << username << "]: " << current_input << "\n";
                 current_input.clear();
             }
             std::cout << "> " << std::flush;
-        } else if (c == 127 || c == 8) { // Backspace
+        } else if (c == 127 || c == 8) {
             if (!current_input.empty()) {
                 current_input.pop_back();
                 std::cout << "\b \b" << std::flush;
             }
-        } else if (c >= 32 && c < 127) { // Печатаемые символы
+        } else if (c >= 32 && c < 127) {
             current_input += c;
             std::cout << c << std::flush;
         }
@@ -156,8 +166,9 @@ int main() {
             }
             case 2: {
                 std::string endpoint, key, username;
-                std::cout << "ip:domain: "; std::getline(std::cin, endpoint);
-                std::cout: "key: "; std::getline(std::cin, key);
+                std::cout << "ip:port: "; std::getline(std::cin, endpoint);
+                // ИСПРАВЛЕНО: заменено двоеточие на <<
+                std::cout << "key: "; std::getline(std::cin, key);
                 std::cout << "username: "; std::getline(std::cin, username);
 
                 start_chat_session(endpoint, key, username);
@@ -166,7 +177,7 @@ int main() {
             case 0: {
                 ServerConfig s;
                 std::cout << "Name Server: "; std::getline(std::cin, s.name);
-                std::cout << "ip:domain: "; std::getline(std::cin, s.endpoint);
+                std::cout << "ip:port: "; std::getline(std::cin, s.endpoint);
                 std::cout << "key: "; std::getline(std::cin, s.key);
                 std::cout << "username: "; std::getline(std::cin, s.username);
 
