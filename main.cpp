@@ -1,33 +1,115 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <atomic>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstring>
 #include "config.h"
+
+std::atomic<bool> g_running(true);
+std::string current_input = "";
 
 void clear_screen() {
     std::cout << "\033[2J\033[1H";
 }
 
-// Заглушка функции подключения и обмена сообщениями в памяти терминала
+// Поток приема сообщений от сервера
+void receive_messages(int sock) {
+    char buffer[4096];
+    while (g_running) {
+        memset(buffer, 0, sizeof(buffer));
+        int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_received <= 0) {
+            std::cout << "\n[-] Соединение с сервером разорвано.\n";
+            g_running = false;
+            break;
+        }
+
+        // Очищаем строку ввода в терминале, выводим сообщение выше, возвращаем ввод
+        std::cout << "\33[2K\r"; // Очистить текущую строку ввода
+        std::cout << buffer;     // Вывести входящее сообщение
+        std::cout << "> " << current_input << std::flush; // Вернуть строку ввода и набранный текст
+    }
+}
+
 void start_chat_session(const std::string& endpoint, const std::string& key, const std::string& username) {
+    // Парсим ip и port (формат ip:port)
+    size_t colon = endpoint.find(':');
+    if (colon == std::string::npos) {
+        std::cout << "[-] Неверный формат адреса. Используйте IP:PORT\n";
+        return;
+    }
+    std::string ip = endpoint.substr(0, colon);
+    int port = std::stoi(endpoint.substr(colon + 1));
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Socket creation failed");
+        return;
+    }
+
+    struct sockaddr_in serv_addr;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip.c_str(), &serv_addr.sin_addr) <= 0) {
+        std::cout << "[-] Некорректный IP адрес.\n";
+        close(sock);
+        return;
+    }
+
+    std::cout << "[*] Подключение к " << endpoint << "...\n";
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Connection failed");
+        close(sock);
+        return;
+    }
+
     clear_screen();
     std::cout << "=== Сеанс связи с " << endpoint << " (Пользователь: " << username << ") ===\n";
     std::cout << "[!] История сообщений не сохраняется. При выходе буфер будет очищен.\n";
     std::cout << "--------------------------------------------------------\n";
-    std::cout << "Введите сообщение (или /exit для выхода):\n\n";
+    std::cout << "> " << std::flush;
 
-    std::string input;
-    while (true) {
-        std::cout << "> ";
-        if (!std::getline(std::cin, input)) break;
-        if (input == "/exit") break;
+    g_running = true;
+    std::thread rx_thread(receive_messages, sock);
 
-        // Здесь происходит отправка и вывод сообщения в stdout терминала
-        if (!input.empty()) {
-            std::cout << "\033[A\33[2K"; // Стираем строку ввода для чистоты вывода чата
-            std::cout << "[" << username << "]: " << input << "\n";
+    // Главный цикл отправки сообщений
+    char c;
+    current_input.clear();
+    while (g_running && std::read(STDIN_FILENO, &c, 1) > 0) {
+        if (c == '\n') {
+            if (current_input == "/exit") {
+                g_running = false;
+                break;
+            }
+            if (!current_input.empty()) {
+                std::string full_msg = "[" + username + "]: " + current_input + "\n";
+                send(sock, full_msg.c_str(), full_msg.size(), 0);
+                
+                // Перемещаем курсор наверх и выводим свое сообщение
+                std::cout << "\33[2K\r[" << username << "]: " << current_input << "\n";
+                current_input.clear();
+            }
+            std::cout << "> " << std::flush;
+        } else if (c == 127 || c == 8) { // Backspace
+            if (!current_input.empty()) {
+                current_input.pop_back();
+                std::cout << "\b \b" << std::flush;
+            }
+        } else if (c >= 32 && c < 127) { // Печатаемые символы
+            current_input += c;
+            std::cout << c << std::flush;
         }
     }
-    
+
+    g_running = false;
+    close(sock);
+    if (rx_thread.joinable()) {
+        rx_thread.join();
+    }
     std::cout << "\n[*] Отключение... Буфер очищен.\n";
 }
 
@@ -44,7 +126,7 @@ int main() {
                   << "Выберите пункт: ";
         
         if (!(std::cin >> choice)) break;
-        std::cin.ignore(); // Очистка буфера после ввода числа
+        std::cin.ignore();
 
         switch (choice) {
             case 1: {
@@ -75,7 +157,7 @@ int main() {
             case 2: {
                 std::string endpoint, key, username;
                 std::cout << "ip:domain: "; std::getline(std::cin, endpoint);
-                std::cout << "key: "; std::getline(std::cin, key);
+                std::cout: "key: "; std::getline(std::cin, key);
                 std::cout << "username: "; std::getline(std::cin, username);
 
                 start_chat_session(endpoint, key, username);

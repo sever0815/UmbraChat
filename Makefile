@@ -1,13 +1,15 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
-TARGET = cchat
 
-all: $(TARGET)
+all: cchat cchat-server
 
-$(TARGET): main.cpp config.h
-	$(CXX) $(CXXFLAGS) main.cpp -o $(TARGET)
+cchat: main.cpp config.h
+	$(CXX) $(CXXFLAGS) main.cpp -o cchat
+
+cchat-server: server.cpp
+	$(CXX) $(CXXFLAGS) server.cpp -o cchat-server
 
 clean:
-	rm -f $(TARGET)
+	rm -f cchat cchat-server
 
 .PHONY: all clean
