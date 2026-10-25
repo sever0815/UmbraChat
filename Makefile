@@ -1,15 +1,15 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
-all: cchat cchat-server
+all: umbra umbra-server
 
-cchat: main.cpp config.h
-	$(CXX) $(CXXFLAGS) main.cpp -o cchat
+umbra: main.cpp config.h
+        $(CXX) $(CXXFLAGS) main.cpp -o cchat
 
-cchat-server: server.cpp
-	$(CXX) $(CXXFLAGS) server.cpp -o cchat-server
+umbra-server: server.cpp
+        $(CXX) $(CXXFLAGS) server.cpp -o cchat-server
 
 clean:
-	rm -f cchat cchat-server
+        rm -f cchat cchat-server
 
 .PHONY: all clean
