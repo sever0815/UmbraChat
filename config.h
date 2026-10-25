@@ -52,14 +52,25 @@ public:
         ServerConfig s;
         while (std::getline(file, line)) {
             line = trim(line);
+            if (line.empty() || line == "---") {
+                if (!s.name.empty() && !s.endpoint.empty()) {
+                    servers.push_back(s);
+                    s = ServerConfig(); // Сброс для следующего сервера
+                }
+                continue;
+            }
+
             if (line.rfind("NAME=", 0) == 0) s.name = trim(line.substr(5));
             else if (line.rfind("ENDPOINT=", 0) == 0) s.endpoint = trim(line.substr(9));
             else if (line.rfind("KEY=", 0) == 0) s.key = trim(line.substr(4));
-            else if (line.rfind("USER=", 0) == 0) {
-                s.username = trim(line.substr(5));
-                servers.push_back(s);
-            }
+            else if (line.rfind("USER=", 0) == 0) s.username = trim(line.substr(5));
         }
+
+        // Добавляем последний элемент, если файл закончился без разделителя
+        if (!s.name.empty() && !s.endpoint.empty()) {
+            servers.push_back(s);
+        }
+
         return servers;
     }
 
