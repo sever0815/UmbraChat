@@ -16,7 +16,6 @@ void clear_screen() {
     std::cout << "\033[2J\033[1H";
 }
 
-// Поток приема сообщений от сервера
 void receive_messages(int sock) {
     char buffer[4096];
     while (g_running) {
@@ -60,28 +59,30 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
 
     std::cout << "[*] Подключение к " << endpoint << "...\n";
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Connection failed");
+        perror("Connection failed (проверьте IP, порт и фаервол)");
         close(sock);
         return;
     }
 
-    // Отправляем ключ серверу для авторизации
-    send(sock, key.c_str(), key.size(), 0);
+    // Отправляем ключ с символом перевода строки, чтобы сервер точно понял конец сообщения
+    std::string auth_payload = key + "\n";
+    send(sock, auth_payload.c_str(), auth_payload.size(), 0);
 
-    // Ждем ответ от сервера (успешна ли авторизация)
+    // Ждем ответ от сервера
     char auth_resp[256];
     memset(auth_resp, 0, sizeof(auth_resp));
     int resp_len = recv(sock, auth_resp, sizeof(auth_resp) - 1, 0);
-    if (resp_len <= 0 || std::string(auth_resp).find(" [+]") == std::string::npos) {
+    
+    if (resp_len <= 0 || std::string(auth_resp).find("[+]") == std::string::npos) {
         std::cout << "[-] Ошибка авторизации: неверный ключ или сервер отклонил соединение.\n";
         close(sock);
         return;
     }
 
     clear_screen();
-    std::cout << "=== Сеанс связи с " << endpoint << " (Пользователь: " << username << ") ===\n";
-    std::cout << "[!] История сообщений не сохраняется. При выходе буфер будет очищен.\n";
-    std::cout << "--------------------------------------------------------\n";
+    std::cout << "=== Umbra Chat Secure Session (" << endpoint << ") ===\n";
+    std::cout << "[!] Zero-Logs активен. История не сохраняется нигде.\n";
+    std::cout << "--------------------------------------------------\n";
     std::cout << "> " << std::flush;
 
     g_running = true;
@@ -89,7 +90,6 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
 
     char c;
     current_input.clear();
-    // ИСПРАВЛЕНО: убрано std::
     while (g_running && read(STDIN_FILENO, &c, 1) > 0) {
         if (c == '\n') {
             if (current_input == "/exit") {
@@ -100,7 +100,7 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
                 std::string full_msg = "[" + username + "]: " + current_input + "\n";
                 send(sock, full_msg.c_str(), full_msg.size(), 0);
                 
-                std::cout << "\33[2K\r[" << username << "]: " << current_input << "\n";
+                std::cout << "\33[2K\r[" << username + "]: " << current_input << "\n";
                 current_input.clear();
             }
             std::cout << "> " << std::flush;
@@ -128,11 +128,11 @@ int main() {
     int choice;
 
     do {
-        std::cout << "\n=== cchat (Anonymous Edition) ===\n"
+        std::cout << "\n=== Umbra Chat ===\n"
                   << "(1) Выбрать Сервер\n"
                   << "(2) Подключиться (разово)\n"
                   << "(0) Добавить сервер\n"
-                  << "--------------------------------\n"
+                  << "------------------\n"
                   << "Выберите пункт: ";
         
         if (!(std::cin >> choice)) break;
@@ -142,7 +142,7 @@ int main() {
             case 1: {
                 auto servers = cfg.load_servers();
                 if (servers.empty()) {
-                    std::cout << "[-] Нет сохраненных серверов в ~/.cchate/\n";
+                    std::cout << "[-] Нет сохраненных серверов в ~/.umbra/\n";
                     break;
                 }
 
@@ -167,7 +167,6 @@ int main() {
             case 2: {
                 std::string endpoint, key, username;
                 std::cout << "ip:port: "; std::getline(std::cin, endpoint);
-                // ИСПРАВЛЕНО: заменено двоеточие на <<
                 std::cout << "key: "; std::getline(std::cin, key);
                 std::cout << "username: "; std::getline(std::cin, username);
 
@@ -182,11 +181,11 @@ int main() {
                 std::cout << "username: "; std::getline(std::cin, s.username);
 
                 cfg.save_server(s);
-                std::cout << "[+] Сервер '" << s.name << "' успешно сохранен в ~/.cchate/\n";
+                std::cout << "[+] Сервер '" << s.name << "' успешно сохранен в ~/.umbra/\n";
                 break;
             }
             default:
-                std::cout << "Неверный пункт меню.\n";
+                std::cout << "[-] Неверный пункт меню.\n";
         }
     } while (choice != 0);
 

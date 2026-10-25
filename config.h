@@ -20,11 +20,18 @@ private:
     std::string config_dir;
     std::string config_file;
 
+    std::string trim(const std::string& str) {
+        size_t first = str.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\r\n");
+        return str.substr(first, (last - first + 1));
+    }
+
 public:
     ConfigManager() {
         const char* home = getenv("HOME");
         std::string home_dir = home ? home : ".";
-        config_dir = home_dir + "/.cchate";
+        config_dir = home_dir + "/.umbra";
         config_file = config_dir + "/config.conf";
         init_dir();
     }
@@ -32,7 +39,7 @@ public:
     void init_dir() {
         if (!fs::exists(config_dir)) {
             fs::create_directories(config_dir);
-            chmod(config_dir.c_str(), 0700); // Строгие права доступа
+            chmod(config_dir.c_str(), 0700);
         }
     }
 
@@ -44,11 +51,12 @@ public:
         std::string line;
         ServerConfig s;
         while (std::getline(file, line)) {
-            if (line.rfind("NAME=", 0) == 0) s.name = line.substr(5);
-            else if (line.rfind("ENDPOINT=", 0) == 0) s.endpoint = line.substr(9);
-            else if (line.rfind("KEY=", 0) == 0) s.key = line.substr(4);
+            line = trim(line);
+            if (line.rfind("NAME=", 0) == 0) s.name = trim(line.substr(5));
+            else if (line.rfind("ENDPOINT=", 0) == 0) s.endpoint = trim(line.substr(9));
+            else if (line.rfind("KEY=", 0) == 0) s.key = trim(line.substr(4));
             else if (line.rfind("USER=", 0) == 0) {
-                s.username = line.substr(5);
+                s.username = trim(line.substr(5));
                 servers.push_back(s);
             }
         }
