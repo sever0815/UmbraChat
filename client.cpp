@@ -6,48 +6,32 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <sys/ioctl.h>
 #include <cstring>
 #include "config.h"
 
 std::atomic<bool> g_running(true);
 std::string current_input = "";
-int term_rows = 24;
-int term_cols = 80;
 
-void update_terminal_size() {
-    struct winsize w;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0) {
-        term_rows = w.ws_row;
-        term_cols = w.ws_col;
-    }
+void clear_screen() {
+    std::cout << "\033[2J\033[1H" << std::flush;
 }
 
-void enter_alt_screen() {
-    std::cout << "\033[?1049h\033[H" << std::flush;
-    update_terminal_size();
-}
-
-void exit_alt_screen() {
-    std::cout << "\033[?1049l" << std::flush;
-}
-
-void redraw_prompt() {
-    update_terminal_size();
-    std::cout << "\033[" << (term_rows - 1) << ";1H\033[2K> " << current_input << std::flush;
-}
-
+// Поток приема сообщений от сервера
 void receive_messages(int sock) {
     char buffer[4096];
     while (g_running) {
         memset(buffer, 0, sizeof(buffer));
         int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
-        if (bytes_received <= 0) break;
+        if (bytes_received <= 0) {
+            std::cout << "\n[-] Соединение с сервером разорвано.\n";
+            g_running = false;
+            break;
+        }
 
-        std::cout << "\033[s";
-        std::cout << "\033[" << (term_rows - 2) << ";1H\n\033[2K" << buffer;
-        std::cout << "\033[u" << std::flush;
-        redraw_prompt();
+        // Очищаем текущую строку ввода, выводим сообщение, возвращаем строку ввода
+        std::cout << "\33[2K\r";
+        std::cout << buffer;
+        std::cout << "> " << current_input << std::flush;
     }
 }
 
@@ -82,6 +66,7 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
         return;
     }
 
+    // Авторизация
     std::string auth_payload = key + "\n";
     send(sock, auth_payload.c_str(), auth_payload.size(), 0);
 
@@ -95,20 +80,16 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
         return;
     }
 
-    enter_alt_screen();
-    std::cout << "\033[1;1H=== Umbra Chat Secure Session (" << endpoint << ") ===\n";
-    std::cout << "[!] Zero-Logs активен. Нажмите Enter для отправки, /exit для выхода.\n";
-    
-    update_terminal_size();
-    std::string line(term_cols, '-');
-    std::cout << "\033[" << (term_rows - 3) << ";1H" << line << std::flush;
+    clear_screen();
+    std::cout << "=== Umbra Chat Secure Session (" << endpoint << ") ===\n";
+    std::cout << "[!] Zero-Logs активен. Введите /exit для выхода.\n";
+    std::cout << "--------------------------------------------------\n\n";
+    std::cout << "> " << std::flush;
 
     g_running = true;
     std::thread rx_thread(receive_messages, sock);
 
     current_input.clear();
-    redraw_prompt();
-
     char c;
     while (g_running && read(STDIN_FILENO, &c, 1) > 0) {
         if (c == '\n') {
@@ -120,22 +101,19 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
                 std::string full_msg = "[" + username + "]: " + current_input + "\n";
                 send(sock, full_msg.c_str(), full_msg.size(), 0);
                 
-                // Выводим свое сообщение локально
-                std::cout << "\033[s";
-                std::cout << "\033[" << (term_rows - 2) << ";1H\n\033[2K" << full_msg;
-                std::cout << "\033[u" << std::flush;
-
+                // Локальный вывод своего сообщения
+                std::cout << "\33[2K\r[" << username << "]: " << current_input << "\n";
                 current_input.clear();
             }
-            redraw_prompt();
+            std::cout << "> " << std::flush;
         } else if (c == 127 || c == 8) {
             if (!current_input.empty()) {
                 current_input.pop_back();
-                redraw_prompt();
+                std::cout << "\b \b" << std::flush;
             }
         } else if (c >= 32 && c < 127) {
             current_input += c;
-            redraw_prompt();
+            std::cout << c << std::flush;
         }
     }
 
@@ -144,7 +122,7 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
     if (rx_thread.joinable()) {
         rx_thread.join();
     }
-    exit_alt_screen();
+    clear_screen();
     std::cout << "[*] Сеанс завершен. Буфер очищен.\n";
 }
 
@@ -153,7 +131,8 @@ int main() {
     int choice;
 
     do {
-        std::cout << "\n=== Umbra Chat ===\n"
+        clear_screen();
+        std::cout << "=== Umbra Chat ===\n"
                   << "(1) Выбрать Сервер\n"
                   << "(2) Подключиться (разово)\n"
                   << "(0) Добавить сервер\n"
@@ -165,17 +144,21 @@ int main() {
 
         switch (choice) {
             case 1: {
+                clear_screen();
                 auto servers = cfg.load_servers();
                 if (servers.empty()) {
                     std::cout << "[-] Нет сохраненных серверов в ~/.umbra/\n";
+                    std::cout << "\nНажмите Enter для возврата в меню...";
+                    std::string dummy;
+                    std::getline(std::cin, dummy);
                     break;
                 }
 
-                std::cout << "\nСохраненные серверы:\n";
+                std::cout << "Сохраненные серверы:\n";
                 for (size_t i = 0; i < servers.size(); ++i) {
                     std::cout << "(" << i + 1 << ") " << servers[i].name << " [" << servers[i].endpoint << "]\n";
                 }
-                std::cout << "Выберите номер: ";
+                std::cout << "\nВыберите номер: ";
                 
                 size_t s_idx;
                 std::cin >> s_idx;
@@ -185,11 +168,13 @@ int main() {
                     const auto& s = servers[s_idx - 1];
                     start_chat_session(s.endpoint, s.key, s.username);
                 } else {
-                    std::cout << "[-] Неверный выбор.\n";
+                    std::cout << "[-] Неверный выбор. Возврат в меню...\n";
+                    sleep(1);
                 }
                 break;
             }
             case 2: {
+                clear_screen();
                 std::string endpoint, key, username;
                 std::cout << "ip:port: "; std::getline(std::cin, endpoint);
                 std::cout << "key: "; std::getline(std::cin, key);
@@ -199,6 +184,7 @@ int main() {
                 break;
             }
             case 0: {
+                clear_screen();
                 ServerConfig s;
                 std::cout << "Name Server: "; std::getline(std::cin, s.name);
                 std::cout << "ip:port: "; std::getline(std::cin, s.endpoint);
@@ -206,13 +192,18 @@ int main() {
                 std::cout << "username: "; std::getline(std::cin, s.username);
 
                 cfg.save_server(s);
-                std::cout << "[+] Сервер '" << s.name << "' успешно сохранен в ~/.umbra/!\n";
+                std::cout << "\n[+] Сервер '" << s.name << "' успешно сохранен в ~/.umbra/!\n";
+                std::cout << "Нажмите Enter для возврата в меню...";
+                std::string dummy;
+                std::getline(std::cin, dummy);
                 break;
             }
             default:
                 std::cout << "[-] Неверный пункт меню.\n";
+                sleep(1);
         }
     } while (choice != 0);
 
+    clear_screen();
     return 0;
 }
