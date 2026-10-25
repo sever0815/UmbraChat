@@ -34,7 +34,6 @@ void exit_alt_screen() {
 
 void redraw_prompt() {
     update_terminal_size();
-    // Переходим на строку ввода (предпоследняя строка терминала)
     std::cout << "\033[" << (term_rows - 1) << ";1H\033[2K> " << current_input << std::flush;
 }
 
@@ -45,11 +44,9 @@ void receive_messages(int sock) {
         int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
         if (bytes_received <= 0) break;
 
-        // Сохраняем текущую позицию курсора, скроллим/выводим сообщение выше строки ввода, возвращаем курсор
-        std::cout << "\033[s"; // Сохранить курсор
-        // Переходим в область чата (выше строки ввода)
+        std::cout << "\033[s";
         std::cout << "\033[" << (term_rows - 2) << ";1H\n\033[2K" << buffer;
-        std::cout << "\033[u" << std::flush; // Восстановить курсор и обновить строку ввода
+        std::cout << "\033[u" << std::flush;
         redraw_prompt();
     }
 }
@@ -102,7 +99,6 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
     std::cout << "\033[1;1H=== Umbra Chat Secure Session (" << endpoint << ") ===\n";
     std::cout << "[!] Zero-Logs активен. Нажмите Enter для отправки, /exit для выхода.\n";
     
-    // Рисуем разделительную линию над строкой ввода
     update_terminal_size();
     std::string line(term_cols, '-');
     std::cout << "\033[" << (term_rows - 3) << ";1H" << line << std::flush;
@@ -121,13 +117,12 @@ void start_chat_session(const std::string& endpoint, const std::string& key, con
                 break;
             }
             if (!current_input.empty()) {
-                // Передаем никнейм и текст сообщения
                 std::string full_msg = "[" + username + "]: " + current_input + "\n";
                 send(sock, full_msg.c_str(), full_msg.size(), 0);
                 
-                // Выводим свое сообщение в зону чата
+                // Выводим свое сообщение локально
                 std::cout << "\033[s";
-                std::cout << "\033[" << (term_rows - 2) << ";1H\n\033[2K[" << username << "]: " << current_input;
+                std::cout << "\033[" << (term_rows - 2) << ";1H\n\033[2K" << full_msg;
                 std::cout << "\033[u" << std::flush;
 
                 current_input.clear();
@@ -212,7 +207,6 @@ int main() {
 
                 cfg.save_server(s);
                 std::cout << "[+] Сервер '" << s.name << "' успешно сохранен в ~/.umbra/!\n";
-                // Программа больше не завершается, цикл продолжается и выводит меню заново
                 break;
             }
             default:
