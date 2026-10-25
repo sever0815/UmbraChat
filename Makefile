@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
 all: umbra umbra-server
 
-umbra: main.cpp config.h
+umbra: client.cpp config.h
         $(CXX) $(CXXFLAGS) main.cpp -o cchat
 
 umbra-server: server.cpp
