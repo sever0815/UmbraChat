@@ -9,9 +9,8 @@
 #include <arpa/inet.h>
 #include <poll.h>
 
-// === НАСТРОЙКИ СЕРВЕРА UMBRA ===
 #define PORT 7777
-#define SERVER_KEY "super_secret_key_123" // Твой ключ для подключения
+#define SERVER_KEY "super_secret_key_123"
 #define MAX_CLIENTS 32
 #define BUFFER_SIZE 4096
 
@@ -88,10 +87,8 @@ int main() {
                 }
 
                 if (received_key != SERVER_KEY) {
-                    std::cout << "[-] Отклонен клиент " << client_ip << " (неверный ключ: '" << received_key << "')\n";
                     close(new_sock);
                 } else if (clients.size() >= MAX_CLIENTS) {
-                    std::cout << "[-] Отклонен клиент " << client_ip << " (сервер полон)\n";
                     close(new_sock);
                 } else {
                     struct pollfd cpfn;
@@ -104,8 +101,6 @@ int main() {
                     c.ip = client_ip;
                     clients.push_back(c);
 
-                    std::cout << "[+] Успешная авторизация клиента: " << c.ip << "\n";
-                    
                     std::string ok_msg = "[+] Авторизация успешна!\n";
                     send(new_sock, ok_msg.c_str(), ok_msg.size(), 0);
                 }
@@ -119,12 +114,12 @@ int main() {
                 int valread = read(pfds[i].fd, buffer, BUFFER_SIZE);
 
                 if (valread <= 0) {
-                    std::cout << "[-] Клиент отключился (" << clients[i - 1].ip << ")\n";
                     close(pfds[i].fd);
                     pfds.erase(pfds.begin() + i);
                     clients.erase(clients.begin() + (i - 1));
                     --i;
                 } else {
+                    // Ретрансляция сообщения с никнеймом остальным клиентам
                     for (size_t j = 1; j < pfds.size(); ++j) {
                         if (j != i) {
                             send(pfds[j].fd, buffer, valread, 0);
